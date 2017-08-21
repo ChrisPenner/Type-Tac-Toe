@@ -12,20 +12,30 @@ import Data.Proxy
 import GHC.TypeLits
 import Linear.V3
 import Linear.Vector
-import Data.Functor.Rep
-import Data.Distributive
+-- import Data.Functor.Rep
+-- import Data.Distributive
 import Data.Bifunctor
 
 -- | Keep a list of each Piece played and its location
 data BoardRep = Empty
-              | Cons Nat Nat Piece BoardRep
+              | Cons CoordT CoordT Piece BoardRep
 
 -- | Either X, O, or Nothing
 data Piece = X | O | N
   deriving (Show, Eq)
 
--- | Board is 3x3
-type Coord n = (n <= 2, KnownNat n)
+data CoordT = A | B | C
+  deriving (Show, Eq)
+
+data Coord (a :: CoordT) where
+  A' :: Coord A
+  B' :: Coord B
+  C' :: Coord C
+
+toVal :: Coord a -> CoordT
+toVal A' = A
+toVal B' = B
+toVal C' = C
 
 -- | Is it the proper turn for p to play a piece?
 type family IsTurn (p :: Piece) (b :: BoardRep) where
@@ -39,7 +49,7 @@ type family Count (t :: Piece) (l :: BoardRep) :: Nat where
   Count t (Cons _ _ _ rest) = Count t rest
 
 -- | Has a square been played already?
-type family Played (m :: Nat) (n :: Nat) (l :: BoardRep) :: Bool where
+type family Played (m :: CoordT) (n :: CoordT) (l :: BoardRep) :: Bool where
   Played _ _ Empty = False
   Played m n (Cons m n _ _) = True
   Played m n (Cons _ _ _ rest) = Played m n rest
@@ -48,21 +58,19 @@ type family Played (m :: Nat) (n :: Nat) (l :: BoardRep) :: Bool where
 newtype Board x a = Board (V3 (V3 a))
   deriving (Functor, Show, Eq)
 
-instance Distributive (Board x) where
-  distribute = distributeRep
+index :: Board b a -> (CoordT, CoordT) -> a
+index (Board vs) (x, y) = indexVector y $ indexVector x vs
 
-instance Representable (Board x) where
-  type Rep (Board x) = (Integer, Integer)
-  index (Board vs) (x, y) = indexVector y $ indexVector x vs
-  tabulate d = Board (V3 (V3 (d (0, 0)) (d (0, 1)) (d (0, 2)))
-                         (V3 (d (1, 0)) (d (1, 1)) (d (1, 2)))
-                         (V3 (d (2, 0)) (d (2, 1)) (d (2, 2)))
-                     )
+tabulate :: ((CoordT, CoordT) -> a) -> Board b a
+tabulate d = Board (V3 (V3 (d (A, A)) (d (A, B)) (d (A, C)))
+                        (V3 (d (B, A)) (d (B, B)) (d (B, C)))
+                        (V3 (d (C, A)) (d (C, B)) (d (C, C)))
+                   )
 
-indexVector :: Integer -> V3 a -> a
-indexVector 0 (V3 a _ _) = a
-indexVector 1 (V3 _ a _) = a
-indexVector 2 (V3 _ _ a) = a
+indexVector :: CoordT -> V3 a -> a
+indexVector A (V3 a _ _) = a
+indexVector B (V3 _ a _) = a
+indexVector C (V3 _ _ a) = a
 
 newBoard :: Board Empty Piece
 newBoard = Board $ V3 (V3 N N N)
@@ -80,32 +88,27 @@ instance APiece O where
 
 -- | Play a piece on square (m, n) if it's valid to do so
 play ::
-  ( Coord m
-  , Coord n
-  , IsTurn p b
+  ( IsTurn p b
   , APiece p
   , Played m n b ~ False
-  ) => Proxy (p :: Piece) -> (Proxy m, Proxy n) -> Board b Piece -> Board (Cons m n p b) Piece
-play (pieceVal -> p) (bimap natVal natVal -> ind) b = tabulate go
+  ) => Proxy (p :: Piece) -> (Coord m, Coord n) -> Board b Piece -> Board (Cons m n p b) Piece
+
+play (pieceVal -> p) (toVal -> x, toVal -> y) b = tabulate go
   where
     go i
-      | i == ind = p
+      | i == (x, y) = p
       | otherwise = index b i
 
 playX ::
-  ( Coord m
-  , Coord n
-  , IsTurn X b
+  ( IsTurn X b
   , Played m n b ~ False
-  ) => (Proxy m, Proxy n) -> Board b Piece -> Board (Cons m n X b) Piece
+  ) => (Coord m, Coord n) -> Board b Piece -> Board (Cons m n X b) Piece
 playX = play (Proxy :: Proxy X)
 
 playO ::
-  ( Coord m
-  , Coord n
-  , IsTurn O b
+  ( IsTurn O b
   , Played m n b ~ False
-  ) => (Proxy m, Proxy n) -> Board b Piece -> Board (Cons m n O b) Piece
+  ) => (Coord m, Coord n) -> Board b Piece -> Board (Cons m n O b) Piece
 playO = play (Proxy :: Proxy O)
 
 p :: Proxy x
@@ -116,7 +119,7 @@ clearType (Board b) = Board b
 
 game :: Board () Piece
 game = newBoard
-     & playX (p :: Proxy 1, p :: Proxy 2)
-     & playO (p :: Proxy 2, p :: Proxy 2)
-     & playX (p :: Proxy 0, p :: Proxy 2)
+     & playX (A', B')
+     & playO (C', C')
+     & playX (A', A')
      & clearType
