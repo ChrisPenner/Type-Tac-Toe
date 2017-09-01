@@ -16,7 +16,7 @@ cabal-version:       >=1.10
 library
   ghc-options:         -Wall
   hs-source-dirs:      src
-  exposed-modules:     TicTacToe
+  exposed-modules:     TypeTacToe
   build-depends:       base >= 4.7 && < 5
   default-language:    Haskell2010
 
